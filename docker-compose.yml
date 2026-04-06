@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  base64-converter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: base64-converter-api
+    ports:
+      - "${PORT:-3111}:3111"
+    environment:
+      - PORT=3111
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-52428800}
+      - NODE_ENV=production
+    volumes:
+      # Optional: mount for accessing converted files
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    # Resource limits (optional)
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { if (res.statusCode !== 200) throw new Error(res.statusCode) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Security
+    security_opt:
+      - no-new-privileges:true
