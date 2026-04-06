@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
-const { fileToBase64, base64ToBuffer, isValidBase64 } = require('./utils/converter');
+const { fileToBase64, base64ToBuffer, isValidBase64, getFileInfo } = require('./utils/converter');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -93,16 +93,20 @@ app.post('/encode', upload.single('file'), handleMulterError, (req, res) => {
  * JSON Body:
  *   {
  *     "base64": "VGhpcyBpcyBhIHRlc3Q=",
- *     "filename": "output.txt" (optional),
- *     "sourceFile": "/path/to/source.txt" (optional - file to delete after conversion)
+ *     "filename": "output.txt" (optional - auto-detects if not provided),
+ *     "sourceFile": "/path/to/source.txt" (optional - file to delete after conversion),
+ *     "autoDetect": true (optional - enable MIME type detection)
  *   }
  * 
  * Response:
  *   File binary data (application/octet-stream)
+ *   - Automatically detects MIME type from file signature
+ *   - Auto-generates filename with correct extension if not provided
+ *   - Returns detected info in response headers
  */
 app.post('/decode', (req, res) => {
   try {
-    const { base64, filename, sourceFile } = req.body;
+    const { base64, filename, sourceFile, autoDetect = true } = req.body;
 
     if (!base64) {
       return res.status(400).json({
@@ -119,10 +123,29 @@ app.post('/decode', (req, res) => {
     }
 
     const buffer = base64ToBuffer(base64);
-    const outputFilename = filename || 'output.bin';
+    
+    // Auto-detect file type if enabled
+    let outputFilename, mimeType;
+    
+    if (autoDetect) {
+      const fileInfo = getFileInfo(buffer, filename);
+      outputFilename = fileInfo.filename;
+      mimeType = fileInfo.mimeType;
+      
+      // Log detected info
+      console.log(`📁 File auto-detected: ${fileInfo.filename}`);
+      console.log(`📋 MIME Type: ${fileInfo.mimeType}`);
+      console.log(`📌 Extension: ${fileInfo.extension}`);
+    } else {
+      outputFilename = filename || 'output.bin';
+      mimeType = 'application/octet-stream';
+    }
 
-    res.setHeader('Content-Type', 'application/octet-stream');
+    // Set headers with detected info
+    res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
+    res.setHeader('X-Detected-Filename', outputFilename);
+    res.setHeader('X-Detected-Mime-Type', mimeType);
     
     // Send response
     res.send(buffer);
